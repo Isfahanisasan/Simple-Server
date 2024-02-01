@@ -8,9 +8,9 @@
 #include <getopt.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
+#include <errno.h> 
 
 /**
- * Project 1 starter code
  * All parts needed to be changed/added are marked with TODO
  */
 
@@ -140,18 +140,18 @@ void handle_request(struct server_app *app, int client_socket) {
     buffer[bytes_read] = '\0';//when data is received from recv it is not automatically 
     //null terminated, so you need to null terminate it to make it C-style string
     // copy buffer to a new string
-    char *request = malloc(strlen(buffer) + 1);//buffer needs to be saved for later operations
-    strcpy(request, buffer);
+    // char *request = malloc(strlen(buffer) + 1);//buffer needs to be saved for later operations
+    // strcpy(request, buffer);
 
     // TODO: Parse the header and extract essential fields, e.g. file name
     char method[10], path[1024], protocol[10]; 
-    sscanf(request, "%s %s %s", method, path, protocol);
+    sscanf(buffer, "%s %s %s", method, path, protocol);
     // Hint: if the requested path is "/" (root), default to index.html
-    printf(request);
+    // printf(request);
     char file_name[1024];
     if (strcmp(path, "/") == 0){//strcmpt returns 0 if two c-strings are equal 
         strcpy(file_name, "index.html"); 
-    } else {
+    } else { 
         strcpy(file_name, path + 1); //+1 to skip the leading / 
     }
     // TODO: Implement proxy and call the function under condition
@@ -159,8 +159,20 @@ void handle_request(struct server_app *app, int client_socket) {
     // if (need_proxy(...)) {
     //    proxy_remote_file(app, client_socket, file_name);
     // } else {
-    serve_local_file(client_socket, file_name);
-    //}
+    printf("checkpoint \n");
+    printf(file_name);
+    
+    if(strstr(file_name, ".ts") != NULL){
+
+        char request_copy[BUFFER_SIZE]; // Create a local copy of the buffer
+        strncpy(request_copy, buffer, sizeof(request_copy));
+        printf("\ncheckpoint 22 \n");
+        printf(request_copy);
+        proxy_remote_file(app, client_socket, request_copy); // Pass the copy to proxy_remote_file
+
+    } else {
+        serve_local_file(client_socket, file_name);
+    }
 }
 
 void serve_local_file(int client_socket, const char *file_name) {
@@ -203,7 +215,7 @@ void serve_local_file(int client_socket, const char *file_name) {
     char response[1024];
     sprintf(response, "HTTP/1.0 200 OK\r\nContent-Type: %s\r\nContent-Length: %ld\r\n\r\n", contentType, fileSize);
 
-    printf(response);
+    // printf(response);
     send(client_socket, response, strlen(response), 0);
 
     // Read and send the file content
@@ -224,7 +236,64 @@ void proxy_remote_file(struct server_app *app, int client_socket, const char *re
     // Bonus:
     // * When connection to the remote server fail, properly generate
     // HTTP 502 "Bad Gateway" response
+    printf("checkpoint 4 \n");
+    int local_socket; 
+    char buffer[BUFFER_SIZE]; 
+    ssize_t bytes_read, bytes_sent; 
 
-    char response[] = "HTTP/1.0 501 Not Implemented\r\n\r\n";
-    send(client_socket, response, strlen(response), 0);
+    
+    local_socket = socket(AF_INET, SOCK_STREAM, 0); //ipv4 is AF_INET
+    if(local_socket < 0){
+        perror("socket failed"); 
+        char response[] = "HTTP/1.0 502 Bad Gateway\r\n\r\n";
+        send(client_socket, response, strlen(response), 0); 
+        return; 
+    }
+    printf("checkpoint 5 \n");
+
+    
+    struct sockaddr_in local_addr; 
+    // //prepare remote server address structure 
+    memset(&local_addr, 0, sizeof(local_addr)); //zero out the remote 
+    local_addr.sin_family = AF_INET; 
+    local_addr.sin_port= htons(app->remote_port);
+    
+
+    if (inet_pton(AF_INET, "127.0.0.1", &local_addr.sin_addr) <= 0) { //sets remote host
+        perror("Invalid address/ Address not supported");
+        close(local_socket);
+        return;
+    }
+
+    // printf("checkpoint 3 \n");
+
+    // // printf("Remote Host: %s\n", app->remote_host);
+    // printf("Remote_addr Sin Port: %hu\n", ntohs(local_addr.sin_port)); // Use %hu to format the port
+    // printf("Remote Server IP Address: %s\n", inet_ntoa(local_addr.sin_addr));
+    // printf("checkpoint 4\n");
+
+
+    if(connect(local_socket, (struct sockaddr *)&local_addr, sizeof(local_addr)) < 0){
+        perror("connect failed 22");
+        // fprintf(stderr, "connect error: %s\n", strerror(errno));
+
+        close(local_socket);
+        const char *bad_gateway_response = "HTTP/1.1 502 Bad Gateway\r\n\r\n";
+        send(client_socket, bad_gateway_response, strlen(bad_gateway_response), 0);
+        return;  
+    }
+    // printf("checkpoint");
+
+    // // Forward the client's request to the backend video serve
+    bytes_sent = send(local_socket, request, strlen(request), 0); 
+    if(bytes_sent < 0){
+        perror("send to remote server failed"); 
+        close(local_socket);
+        return;
+    }
+    while((bytes_read = recv(local_socket, buffer, BUFFER_SIZE, 0)) > 0){
+        send(client_socket, buffer, bytes_read, 0); 
+    }
+    close(local_socket);
+
 }
