@@ -9,6 +9,7 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <errno.h> 
+#include <ctype.h>
 
 /**
  * All parts needed to be changed/added are marked with TODO
@@ -28,6 +29,30 @@ struct server_app {
     char *remote_host;
     uint16_t remote_port;
 };
+
+
+
+
+void decode_path(const char *input, char *output) {
+    while (*input) {
+        if (*input == '%' && isxdigit(*(input + 1)) && isxdigit(*(input + 2))) {
+            // Convert the next two hex digits to a character
+            char hex[3] = {input[1], input[2], '\0'};
+            *output++ = strtol(hex, NULL, 16);
+            input += 3;  // Skip past the "%XX"
+        } else if (*input == '%') {
+            // Literal '%' character, escape it or handle as needed
+            *output++ = '%';  // Copy '%' literally
+            input++;
+        } else {
+            // Regular character, copy it
+            *output++ = *input++;
+        }
+    }
+    *output = '\0';  // Null-terminate the output string
+}
+
+
 
 // The following function is implemented for you and doesn't need
 // to be change
@@ -152,17 +177,18 @@ void handle_request(struct server_app *app, int client_socket) {
     if (strcmp(path, "/") == 0){//strcmpt returns 0 if two c-strings are equal 
         strcpy(file_name, "index.html"); 
     } else { 
-        strcpy(file_name, path + 1); //+1 to skip the leading / 
+        // strcpy(file_name, path + 1); //+1 to skip the leading / 
+        decode_path(path + 1, file_name); 
     }
     
     int fileLength = strlen(file_name);
-    for(int i = 0; i < fileLength - 2; i++){ // converting %20 into space to match files with spaces
-        if (file_name[i] == '%' && file_name[i + 1] == '2' && file_name[i + 2] == '0'){
-            file_name[i] = ' ';
-            memmove(&file_name[i + 1], &file_name[i + 3], fileLength - i - 2);
-            fileLength -= 2; 
-        }
-    }
+    // for(int i = 0; i < fileLength - 2; i++){ // converting %20 into space to match files with spaces
+    //     if (file_name[i] == '%' && file_name[i + 1] == '2' && file_name[i + 2] == '0'){
+    //         file_name[i] = ' ';
+    //         memmove(&file_name[i + 1], &file_name[i + 3], fileLength - i - 2);
+    //         fileLength -= 2; 
+    //     }
+    // }
     // TODO: Implement proxy and call the function under condition
     // specified in the spec
     // if (need_proxy(...)) {
@@ -309,3 +335,5 @@ void proxy_remote_file(struct server_app *app, int client_socket, const char *re
     close(local_socket);
 
 }
+
+
