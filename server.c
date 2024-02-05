@@ -154,13 +154,22 @@ void handle_request(struct server_app *app, int client_socket) {
     } else { 
         strcpy(file_name, path + 1); //+1 to skip the leading / 
     }
+    
+    int fileLength = strlen(file_name);
+    for(int i = 0; i < fileLength - 2; i++){ // converting %20 into space to match files with spaces
+        if (file_name[i] == '%' && file_name[i + 1] == '2' && file_name[i + 2] == '0'){
+            file_name[i] = ' ';
+            memmove(&file_name[i + 1], &file_name[i + 3], fileLength - i - 2);
+            fileLength -= 2; 
+        }
+    }
     // TODO: Implement proxy and call the function under condition
     // specified in the spec
     // if (need_proxy(...)) {
     //    proxy_remote_file(app, client_socket, file_name);
     // } else {
     printf("checkpoint \n");
-    printf(file_name);
+    printf("File name: %s", file_name);
     
     if(strstr(file_name, ".ts") != NULL){
 
@@ -186,8 +195,10 @@ void serve_local_file(int client_socket, const char *file_name) {
     // * Also send file content
     // (When the requested file does not exist):
     // * Generate a correct response
+    // printf("File name: %s\n", file_name);
     FILE *file = fopen(file_name, "rb");
     if (file == NULL){
+        printf("File is NULL\n");
         char *notFoundResponse = "HTTP/1.0 404 Not Found\r\n\r\n";
 
         send(client_socket, notFoundResponse, strlen(notFoundResponse), 0);
@@ -197,6 +208,7 @@ void serve_local_file(int client_socket, const char *file_name) {
     char *contentType;
 
     if (strstr(file_name, ".txt") != NULL) { //first occurance strstr
+    printf("File is .txt\n");
         contentType = "text/plain; charset=UTF-8";
     }
     else if (strstr(file_name, ".html") != NULL) {
